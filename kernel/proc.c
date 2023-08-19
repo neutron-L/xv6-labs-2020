@@ -719,3 +719,21 @@ void procdump(void)
         printf("\n");
     }
 }
+
+
+// get the number of unused processes
+uint64 usedprocess()
+{
+    struct proc *p;
+    uint64 procs = 0;
+
+    for (p = proc; p < &proc[NPROC]; p++)
+    {
+        acquire(&p->lock);
+        if (p->state != UNUSED)
+            ++procs;
+        release(&p->lock);
+    }
+
+    return procs;
+}
