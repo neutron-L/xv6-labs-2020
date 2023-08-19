@@ -97,5 +97,5 @@ uint64 freemem()
   }
   release(&kmem.lock);
 
-  return pages << 12; // 4096 * pages
+  return pages << PGSHIFT; // 4096 * pages
 } 
