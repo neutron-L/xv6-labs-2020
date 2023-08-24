@@ -135,6 +135,12 @@ syscall(void)
   int num;
   struct proc *p = myproc();
 
+  uint64 pgtbl = r_satp();
+  if (pgtbl != MAKE_SATP(p->kpgtbl))
+  {
+    printf("fake %d kernel pagetable\n", p->pid);
+  }
+
   num = p->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     p->trapframe->a0 = syscalls[num]();

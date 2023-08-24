@@ -128,9 +128,6 @@ int exec(char *path, char **argv)
 
     if (p->pid == 1)
         vmprint(p->pagetable);
-    // printf("%d exec copy %d pages\n", p->pid, p->sz / PGSIZE);
-    // debug_vmprint(p->pagetable, 0, p->sz);
-    // debug_vmprint(p->kpgtbl, 0, p->sz);
 
     return argc; // this ends up in a0, the first argument to main(argc, argv)
 

@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -184,7 +186,7 @@ kvmpa(uint64 va)
     pte_t *pte;
     uint64 pa;
 
-    pte = walk(kernel_pagetable, va, 0);
+    pte = walk(myproc()->kpgtbl, va, 0);
     if (pte == 0)
         panic("kvmpa");
     if ((*pte & PTE_V) == 0)
@@ -342,26 +344,19 @@ uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 // All leaf mappings must already have been removed.
 void freewalk(pagetable_t pagetable)
 {
-    static int level = 0;
-    static int dizhi[3] = {-1, -1, -1};
     // there are 2^9 = 512 PTEs in a page table.
     for (int i = 0; i < 512; i++)
     {
         pte_t pte = pagetable[i];
         if ((pte & PTE_V) && (pte & (PTE_R | PTE_W | PTE_X)) == 0)
         {
-            dizhi[level++] = i;
             // this PTE points to a lower-level page table.
             uint64 child = PTE2PA(pte);
             freewalk((pagetable_t)child);
             pagetable[i] = 0;
-            dizhi[--level] = -1;
         }
         else if (pte & PTE_V)
-        {
-            printf("%p %d %d %d %d\n", pte, level, dizhi[0], dizhi[1], dizhi[2]);
             panic("freewalk: leaf");
-        }
     }
     kfree((void *)pagetable);
 }
@@ -532,6 +527,9 @@ int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 void vmprint(pagetable_t pagetable)
 {
     static int deep = 0;
+
+    if (!deep)
+    printf("page table %p\n", pagetable);
     // there are 2^9 = 512 PTEs in a page table.
     for (int i = 0; i < 512; i++)
     {

@@ -170,14 +170,8 @@ freeproc(struct proc *p)
         proc_freepagetable(p->pagetable, p->sz);
 
     if (p->kpgtbl)
-    {
-        // switch new process kernel page table
-        w_satp(MAKE_SATP(kernel_pagetable));
-        sfence_vma();
-
         proc_freekpgtbl(p->kpgtbl, p->sz);
-    }
-    // printf("free %d successfully\n", p->pid);
+
     p->kpgtbl = 0;
     p->pagetable = 0;
     p->sz = 0;
@@ -268,6 +262,22 @@ void proc_freekpgtbl(pagetable_t kpgtbl, uint64 sz)
         end_va = CLINT;
     uvmunmap(kpgtbl, 0, PGROUNDUP(end_va) >> PGSHIFT, 0);
     uvmfree(kpgtbl, 0);
+
+    // there are 2^9 = 512 PTEs in a page table.
+    //     (void)sz;
+    //   for(int i = 0; i < 512; i++) {
+    //     pte_t pte = kpgt[i];
+    //     if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+    //       kpgt[i] = 0;
+
+    //       if((pte & (PTE_R | PTE_W | PTE_X)) == 0) {
+    //         uint64 child = PTE2PA(pte);
+    //         proc_freekpgtbl((pagetable_t)child,sz);
+    //       }
+    //     }
+    //   }
+
+    //   kfree((void*)kpgt);
 }
 
 // a user program that calls exec("/init")
@@ -331,12 +341,7 @@ int growproc(int n)
         dva = sz;
         sz = uvmdealloc(p->pagetable, sz, sz + n);
     }
-    if (sva < CLINT)
-    {
-        if (dva > CLINT)
-            dva = CLINT;
-        kvmcopy_pgtbl(p->pagetable, p->kpgtbl, sva, dva);
-    }
+    kvmcopy_pgtbl(p->pagetable, p->kpgtbl, sva, dva);
 
     p->sz = sz;
     return 0;
@@ -356,7 +361,6 @@ int fork(void)
         printf("fork: allocproc failed\n");
         return -1;
     }
-
 
     // Copy user memory from parent to child.
     if (uvmcopy(p->pagetable, np->pagetable, p->sz) < 0)
@@ -531,8 +535,6 @@ int wait(uint64 addr)
                     if (addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate,
                                              sizeof(np->xstate)) < 0)
                     {
-                        printf("fuck\n");
-
                         release(&np->lock);
                         release(&p->lock);
                         return -1;
@@ -549,8 +551,6 @@ int wait(uint64 addr)
         // No point waiting if we don't have any children.
         if (!havekids || p->killed)
         {
-                        printf("Fuck\n");
-
             release(&p->lock);
             return -1;
         }
@@ -591,8 +591,8 @@ void scheduler(void)
                 c->proc = p;
 
                 // switch process kernel page table
-                w_satp(MAKE_SATP(p->kpgtbl));
-                sfence_vma();
+                // w_satp(MAKE_SATP(p->kpgtbl));
+                // sfence_vma();
                 swtch(&c->context, &p->context);
                 // switch kernel page table
                 w_satp(MAKE_SATP(kernel_pagetable));
