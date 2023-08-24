@@ -529,7 +529,7 @@ void vmprint(pagetable_t pagetable)
     static int deep = 0;
 
     if (!deep)
-    printf("page table %p\n", pagetable);
+        printf("page table %p\n", pagetable);
     // there are 2^9 = 512 PTEs in a page table.
     for (int i = 0; i < 512; i++)
     {
