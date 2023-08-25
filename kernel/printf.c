@@ -132,3 +132,25 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+void backtrace(void)
+{
+    printf("backtrace:\n");
+    uint64 fp = r_fp();
+    uint64 bottom = PGROUNDDOWN(fp);
+    uint64 up = PGROUNDUP(fp);
+    // printf("bottom: %p; up: %p\n", bottom, up);
+    uint64 pre_fp;
+
+    while (1)
+    {
+        pre_fp = *(uint64 *)(fp - 16);
+        if (pre_fp >= bottom && pre_fp <= up) // the before frame exists
+        {
+            printf("%p\n", *(uint64 *)(fp - 8));
+            fp = pre_fp;
+        }
+        else
+            break;
+    }   
+}
