@@ -129,7 +129,8 @@ found:
 
   //  initialize alarm fields
   p->alarm_handler = 0;
-  p->rem_ticks = 0;
+  p->rem_ticks = p->ticks = 0;
+  p->handling = 0;
 
   return p;
 }

@@ -109,7 +109,7 @@ uint64 sys_sigalarm(void)
     if(argint(0, &ticks) < 0 || argaddr(1, (uint64*)&handler) < 0)
         return -1;
     struct proc * p = myproc();
-    p->rem_ticks = ticks;
+    p->rem_ticks = p->ticks = ticks;
     p->alarm_handler = handler;
 
     return 0;
@@ -118,5 +118,12 @@ uint64 sys_sigalarm(void)
 
 uint64 sys_sigreturn(void)
 {
+    struct proc * p = myproc();
+
+    // save registers and epc
+    p->trapframe->epc = p->icontext.epc;
+    memmove((void *)((char *)p->trapframe + 40), (void *)((char *)&p->icontext + 8), 31 << 3);
+    p->handling = 0;
+
     return 0;
 }
