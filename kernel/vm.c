@@ -105,20 +105,12 @@ walkaddr(pagetable_t pagetable, uint64 va)
     pte = walk(pagetable, va, 0);
     if (pte == 0)
         return 0;
+    if ((*pte & PTE_LC) && lazy_allocate(pagetable, va) < 0)
+        return 0;
     if ((*pte & PTE_V) == 0)
         return 0;
     if ((*pte & PTE_U) == 0)
         return 0;
-    if ((*pte & PTE_LC))
-    {
-        printf("walk LC\n");
-        if (lazy_allocate(pagetable, va) < 0)
-        {
-printf("%d %d\n", *pte & PTE_LC, va);
-        return 0;
-        }
-        
-    }
     pa = PTE2PA(*pte);
     return pa;
 }
