@@ -17,6 +17,8 @@ extern char end[]; // first address after kernel.
 uint8 refcount[(PHYSTOP - KERNBASE) >> PGSHIFT];
 struct spinlock reflock;
 
+#define REFCOUNTIDX(pa) ((PGROUNDDOWN(pa) - KERNBASE) >> PGSHIFT)
+
 struct run
 {
     struct run *next;
@@ -41,7 +43,7 @@ void freerange(void *pa_start, void *pa_end)
     p = (char *)PGROUNDUP((uint64)pa_start);
     for (; p + PGSIZE <= (char *)pa_end; p += PGSIZE)
     {
-        increment_ref((uint64)p);
+        refcount[REFCOUNTIDX((uint64)p)] = 1;
         kfree(p);
     }
 }
@@ -100,7 +102,7 @@ kalloc(void)
 uint8 add_ref(uint64 pa, int delta)
 {
     uint8 ref;
-    int idx = (PGROUNDDOWN(pa) - KERNBASE) >> PGSHIFT;
+    int idx = REFCOUNTIDX((uint64)pa);
     // printf("add ref: %p %d\n", pa, idx);
     acquire(&reflock);
     refcount[idx] += delta;
@@ -128,8 +130,44 @@ uint8 get_ref(uint64 pa)
 void *
 cow_copy_page(uint64 pa)
 {
-    if (get_ref(pa) == 1)
-        return (void *)pa;
+    int idx;
+    void *new_pa = 0;
+    void *back_page = 0;
+    int need = 1;
+
+    back_page = kalloc();
+
+    idx = REFCOUNTIDX(pa);
+    acquire(&reflock);
+
+    if (refcount[idx] == 1)
+    {
+        need = 0;
+        new_pa = (void *)pa;
+        goto ret;
+    }
     else
-        return kalloc();
+    {
+        if (back_page == 0)
+        {
+            new_pa = 0;
+            goto ret;
+        }
+        
+        new_pa = back_page;
+        memmove((void *)new_pa, (const void *)pa, PGSIZE);
+        --refcount[idx];
+    }
+ret:
+    release(&reflock);
+
+    if (need == 0 && back_page != 0)
+        kfree(back_page);
+
+// if (get_ref(pa) == 1)
+//     return (void *)pa;
+// else 
+//     return kalloc();
+
+    return new_pa;
 }

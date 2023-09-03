@@ -484,11 +484,12 @@ int handle_cow(pagetable_t pagetable, uint64 va)
 
     if ((mem = cow_copy_page(pa)) == 0)
         return -1;
-    if ((uint64)mem != pa)
-    {
-        memmove((void *)mem, (const void *)pa, PGSIZE);
-        decrement_ref(pa);
-    }
+    // if ((uint64)mem != pa)
+    // {
+    //     memmove((void *)mem, (const void *)pa, PGSIZE);
+    //     if (decrement_ref(pa) == 0)
+    //         panic("fuck bug");
+    // }
     flags &= ~PTE_COW;
     flags |= PTE_W;
     *pte = PA2PTE((uint64)mem) | flags;
