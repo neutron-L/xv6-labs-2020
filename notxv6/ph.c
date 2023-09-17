@@ -18,7 +18,7 @@ int keys[NKEYS];
 int nthread = 1;
 
 /* Mutex lock */
-pthread_mutex_t lock;            // declare a lock for modifying table
+pthread_mutex_t locks[NBUCKET];     // declare a lock for modifying table
 // pthread_mutex_init(&lock, NULL); // initialize the lock
 // pthread_mutex_lock(&lock);       // acquire lock
 // pthread_mutex_unlock(&lock);     // release lock
@@ -57,9 +57,9 @@ void put(int key, int value)
     e->value = value;
   } else {
     // the new is new.
-    pthread_mutex_lock(&lock);       // acquire lock
+    pthread_mutex_lock(&locks[i]);       // acquire lock
     insert(key, value, &table[i], table[i]);
-    pthread_mutex_unlock(&lock);     // release lock
+    pthread_mutex_unlock(&locks[i]);     // release lock
   }
 }
 
@@ -124,7 +124,9 @@ main(int argc, char *argv[])
   }
 
 
-  pthread_mutex_init(&lock, NULL); // initialize the lock
+  // initialize the lock
+  for (int i = 0; i < NBUCKET;  ++i)
+    pthread_mutex_init(&locks[i], NULL); 
 
   //
   // first the puts
