@@ -1,0 +1,13 @@
+in function insert, if there are 2 threads, and their execute 
+steps maybe as following(whether computer is multicore or unicore):
+Thread 1                                  Thread 2
+e->key = key;                             
+e->value = value;
+                                        e->key = key;                             
+                                        e->value = value;
+e->next = n;
+                                        e->next = n;
+*p = e;
+                                        *p = e;
+
+the entry by thread 1 inserted is lost, the reverse is also the same.
