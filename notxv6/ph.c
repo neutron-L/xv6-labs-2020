@@ -157,4 +157,8 @@ main(int argc, char *argv[])
 
   printf("%d gets, %.3f seconds, %.0f gets/second\n",
          NKEYS*nthread, t1 - t0, (NKEYS*nthread) / (t1 - t0));
+
+  // destroy the lock
+  for (int i = 0; i < NBUCKET;  ++i)
+    pthread_mutex_destroy(&locks[i]); 
 }
