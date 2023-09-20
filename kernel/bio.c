@@ -24,26 +24,22 @@
 
 #define NBUCKET 13
 #define HASH(id) ((id) % NBUCKET)
-#define MINIMUM_BLOCKS 2
-#define MAXIMUM_BLOCKS 4
-#define MAXIMUM_FREE_BLOCKS 2
+#define DEBUG 0
 
 struct bucket
 {
     struct spinlock lock;
     struct buf free_list;
     struct buf head;
-    int frees;
-    int tot;
 };
 
 struct
 {
-    struct spinlock lock;
     struct buf buf[NBUF];
-
+#if DEBUG
+    struct spinlock lock;
+#endif
     // Linked list of all free buffers, through prev/next.
-    struct buf head;
     struct bucket hash_table[NBUCKET];
 } bcache;
 
@@ -56,7 +52,6 @@ bucket_init(struct bucket *bk)
     initlock(&bk->lock, lockname);
     bk->free_list.prev = bk->free_list.next = &bk->free_list;
     bk->head.prev = bk->head.next = &bk->head;
-    bk->frees = bk->tot = 0;
 }
 
 // Remove from hash table
@@ -65,6 +60,17 @@ remove(struct buf *b)
 {
     b->next->prev = b->prev;
     b->prev->next = b->next;
+}
+
+static struct buf *
+find(struct buf *head, uint dev, uint blockno)
+{
+    struct buf *b = 0;
+    for (b = head->next; b != head; b = b->next)
+        if (b->dev == dev && b->blockno == blockno)
+            break;
+
+    return b == head ? 0 : b;
 }
 
 static void
@@ -80,38 +86,23 @@ void binit(void)
 {
     struct buf *b;
     int i;
+
+#if DEBUG
     initlock(&bcache.lock, "bcache");
+#endif
 
     // Init has_table and bucket lock
     for (i = 0; i < NBUCKET; ++i)
         bucket_init(&bcache.hash_table[i]);
 
-    // Create linked list of free buffers
-    bcache.head.prev = &bcache.head;
-    bcache.head.next = &bcache.head;
     // Put MAXIMUM free buffers to hash table
     i = 0;
-    int n = NBUF;
-    if (n > MAXIMUM_FREE_BLOCKS * NBUCKET)
-        n = MAXIMUM_FREE_BLOCKS * NBUCKET;
-    for (b = bcache.buf; b < bcache.buf + n; b++)
+    for (b = bcache.buf; b < bcache.buf + NBUF; b++)
     {
         initsleeplock(&b->lock, "buffer");
         struct buf *head = &bcache.hash_table[i].free_list;
         insert_head(b, head);
-        ++bcache.hash_table[i].frees;
-        ++bcache.hash_table[i].tot;
         i = (i + 1) % NBUCKET;
-    }
-
-    // 剩余的放入global free list
-    if (n < NBUF)
-    {
-        for (b = bcache.buf + n; b < bcache.buf + NBUF; b++)
-        {
-            initsleeplock(&b->lock, "buffer");
-            insert_head(b, &bcache.head);
-        }
     }
 }
 
@@ -121,72 +112,113 @@ void binit(void)
 static struct buf *
 bget(uint dev, uint blockno)
 {
-    struct buf *b;
+    struct buf *b = 0;
+    struct buf *head;
+
+#if DEBUG
+    acquire(&bcache.lock);
+#endif
 
     int id = HASH(blockno);
     struct bucket *bkt = &bcache.hash_table[id];
     acquire(&bkt->lock);
 
     // Is the block already cached?
-    struct buf *head = &bcache.hash_table[id].head;
-    for (b = head->next; b != head; b = b->next)
+    head = &bcache.hash_table[id].head;
+    b = find(head, dev, blockno);
+    if (b)
     {
-        if (b->dev == dev && b->blockno == blockno)
-        {
-            b->refcnt++;
-            // remove from hash table
-            remove(b);
-            insert_head(b, head);
-            release(&bkt->lock);
-            acquiresleep(&b->lock);
-            return b;
-        }
+        b->refcnt++;
+        // remove to bucket front
+        remove(b);
+        goto found;
     }
-
     // Not cached.
-    // Is there a unused buffer?
-    b = 0;
-    if (bkt->frees)
+    // Are there any unused buffers in the current bucket?
+    else
     {
-        b = bkt->free_list.prev;
-        remove(b);
-        --bkt->frees;
-    }
-    else if (bkt->tot < MAXIMUM_BLOCKS)
-    {
-        // Recycle the free buffer list.
-        acquire(&bcache.lock);
-        if (bcache.head.prev != &bcache.head)
+        // 按顺序 从其他bucket中寻找free buffer
+        for (int i = 0; i < NBUCKET; ++i)
         {
-            b = bcache.head.prev;
-            // remove from free list
-            remove(b);
-            release(&bcache.lock);
-            ++bkt->tot;
-        }
-        else
-            release(&bcache.lock);
-    }
+            if (i == id)
+            {
+                head = &bcache.hash_table[id].free_list;
+                if (head->prev != head)
+                {
+                    b = head->prev;
+                    // remove from free list
+                    remove(b);
+                    goto init;
+                }
+            }
+            else if (i < id)
+            {
+                release(&bkt->lock); // 暂时释放
+                acquire(&bcache.hash_table[i].lock);
+                acquire(&bkt->lock);
 
-    if (!b) // 从本地替换
-    {
-        b = bkt->head.prev;
-        remove(b);
+                // 检查是否已经存在
+                head = &bcache.hash_table[id].head;
+                b = find(head, dev, blockno);
+                if (b)
+                {
+                    b->refcnt++;
+                    // remove to bucket front
+                    remove(b);
+                    release(&bcache.hash_table[i].lock);
+                    goto found;
+                }
+                else
+                {
+                    head = &bcache.hash_table[i].free_list;
+                    if (head->prev != head)
+                    {
+                        b = head->prev;
+                        // remove from free list
+                        remove(b);
+                        release(&bcache.hash_table[i].lock);
+                        goto init;
+                    }
+                    else
+                        release(&bcache.hash_table[i].lock);
+                }
+            }
+            else
+            {
+                acquire(&bcache.hash_table[i].lock);
+                head = &bcache.hash_table[i].free_list;
+                if (head->prev != head)
+                {
+                    b = head->prev;
+                    // remove from free list
+                    remove(b);
+                    release(&bcache.hash_table[i].lock);
+                    goto init;
+                }
+                else
+                    release(&bcache.hash_table[i].lock);
+            }
+        }
     }
+    printf("dev %d blockno %d id %d\n", dev, blockno, id);
+    panic("bget: no buffers");
 
     // initialize buffer
+init:
     b->dev = dev;
     b->blockno = blockno;
     b->valid = 0;
     b->refcnt = 1;
 
+found:
     insert_head(b, &bkt->head);
     release(&bkt->lock);
+#if DEBUG
+    release(&bcache.lock);
+#endif
     acquiresleep(&b->lock);
-    
-    return b;
 
-    panic("bget: no buffers");
+    return b;
 }
 
 // Return a locked buf with the contents of the indicated block.
@@ -221,6 +253,9 @@ void brelse(struct buf *b)
 
     releasesleep(&b->lock);
 
+#if DEBUG
+    acquire(&bcache.lock);
+#endif
     int id = HASH(b->blockno);
     struct bucket *bkt = &bcache.hash_table[id];
     acquire(&bkt->lock);
@@ -230,43 +265,45 @@ void brelse(struct buf *b)
         // no one is waiting for it.
         // remove from hash table
         remove(b);
-
-        if (bkt->frees == MAXIMUM_FREE_BLOCKS && bkt->tot > MINIMUM_BLOCKS) // put to global free list
-        {
-            acquire(&bcache.lock);
-            insert_head(b, &bcache.head);
-            release(&bcache.lock);
-
-            --bkt->tot;
-        }
-        else
-        {
-            insert_head(b, &bkt->free_list);
-            ++bkt->frees;
-        }
+        insert_head(b, &bkt->free_list);
     }
 
     release(&bkt->lock);
+#if DEBUG
+    release(&bcache.lock);
+#endif
 }
 
 void bpin(struct buf *b)
 {
     int id = HASH(b->blockno);
     struct bucket *bkt = &bcache.hash_table[id];
+#if DEBUG
+    acquire(&bcache.lock);
+#endif
     acquire(&bkt->lock);
     // acquire(&bcache.lock);
     b->refcnt++;
     // release(&bcache.lock);
     release(&bkt->lock);
+#if DEBUG
+    release(&bcache.lock);
+#endif
 }
 
 void bunpin(struct buf *b)
 {
     int id = HASH(b->blockno);
     struct bucket *bkt = &bcache.hash_table[id];
+#if DEBUG
+    acquire(&bcache.lock);
+#endif
     acquire(&bkt->lock);
     // acquire(&bcache.lock);
     b->refcnt--;
     // release(&bcache.lock);
     release(&bkt->lock);
+#if DEBUG
+    release(&bcache.lock);
+#endif
 }
