@@ -36,6 +36,15 @@ struct
     struct spinlock bucket_lock[NBUCKET];
 } bcache;
 
+// Remove from hash table
+static void
+remove_from_bucket(struct buf *b)
+{
+    b->hash_next->hash_prev = b->hash_prev;
+    b->hash_prev->hash_next = b->hash_next;
+}
+
+
 void binit(void)
 {
     struct buf *b;
@@ -64,14 +73,6 @@ void binit(void)
     }
 }
 
-// Remove from hash table
-static void
-remove_from_bucket(struct buf *b)
-{
-    b->hash_next->hash_prev = b->hash_prev;
-    b->hash_prev->hash_next = b->hash_next;
-}
-
 // Look through buffer cache for block on device dev.
 // If not found, allocate a buffer.
 // In either case, return locked buffer.
@@ -97,28 +98,28 @@ bget(uint dev, uint blockno)
     }
 
     // Not cached.
-    // // 1. Recycle the free buffer list.
-    // acquire(&bcache.lock);
-    // if (bcache.head.next != &bcache.head)
-    // {
-    //     b = bcache.head.next;
-    //     // remove from free list
-    //     b->prev->next = b->next;
-    //     b->next->prev = b->prev;
+    // 1. Recycle the free buffer list.
+    acquire(&bcache.lock);
+    if (bcache.head.next != &bcache.head)
+    {
+        b = bcache.head.next;
+        // remove from free list
+        b->prev->next = b->next;
+        b->next->prev = b->prev;
 
-    //     // initialize buffer
-    //     b->dev = dev;
-    //     b->blockno = blockno;
-    //     b->valid = 0;
-    //     b->refcnt = 1;
-    //     release(&bcache.lock);
-    //     goto found;
-    //     //   release(&bcache.bucket_lock[id]);
+        // initialize buffer
+        b->dev = dev;
+        b->blockno = blockno;
+        b->valid = 0;
+        b->refcnt = 1;
+        release(&bcache.lock);
+        goto found;
+        //   release(&bcache.bucket_lock[id]);
 
-    //     //   acquiresleep(&b->lock);
-    //     //   return b;
-    // }
-    // release(&bcache.lock);
+        //   acquiresleep(&b->lock);
+        //   return b;
+    }
+    release(&bcache.lock);
 
     // 2. Starting from the current bucket, find the least used buffer in the index order of the bucket
     int next_id;
@@ -199,30 +200,36 @@ void brelse(struct buf *b)
         // remove from hash table
         remove_from_bucket(b);
 
-        // acquire(&bcache.lock);
-        // b->next = bcache.head.next;
-        // b->prev = &bcache.head;
-        // bcache.head.next->prev = b;
-        // bcache.head.next = b;
-        // release(&bcache.lock);
-        b->hash_prev = bcache.hash_table[id].hash_prev;
-        bcache.hash_table[id].hash_prev->hash_next = b;
-        b->hash_next = &bcache.hash_table[id];
-        bcache.hash_table[id].hash_prev = b;
+        acquire(&bcache.lock);
+        b->next = bcache.head.next;
+        b->prev = &bcache.head;
+        bcache.head.next->prev = b;
+        bcache.head.next = b;
+        release(&bcache.lock);
+    //     b->hash_prev = bcache.hash_table[id].hash_prev;
+    //     bcache.hash_table[id].hash_prev->hash_next = b;
+    //     b->hash_next = &bcache.hash_table[id];
+    //     bcache.hash_table[id].hash_prev = b;
     }
     release(&bcache.bucket_lock[id]);
 }
 
 void bpin(struct buf *b)
 {
-    acquire(&bcache.lock);
+    int id = HASH(b->blockno);
+    acquire(&bcache.bucket_lock[id]);
+    // acquire(&bcache.lock);
     b->refcnt++;
-    release(&bcache.lock);
+    // release(&bcache.lock);
+    release(&bcache.bucket_lock[id]);
 }
 
 void bunpin(struct buf *b)
 {
-    acquire(&bcache.lock);
+    int id = HASH(b->blockno);
+    acquire(&bcache.bucket_lock[id]);
+    // acquire(&bcache.lock);
     b->refcnt--;
-    release(&bcache.lock);
+    // release(&bcache.lock);
+    release(&bcache.bucket_lock[id]);
 }
