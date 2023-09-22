@@ -22,4 +22,4 @@ tot = 5000+，**failed**
 - 如果j == i，不用获取锁，因为此时以及有i号bucket锁
 - 如果j < i，需要先放弃第i号bucket锁，再重新获取。此时，可能另一个cpu上运行的线程，在第k号bucket中释放了一个buffer（k < j），然后另一个cpu抢在当前cpu之前，执行了一遍重复的工作，并把第k个bucket中的空闲buffer分配到了第i个bucket中。因此，当释放第i号锁后，再重新获取到第j号锁和第i号锁，此时可能想要找的buffer已经存在了，因此需要做一次检查。  
 存在的问题：
-- usertests最后一个测试用例bigdir无法通过
+- usertests最后一个测试用例bigdir无法通过，而现在运行make grade大多超时……（timeout是300s，但是基本运行完要300多s）

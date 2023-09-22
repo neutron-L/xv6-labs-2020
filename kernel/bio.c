@@ -22,7 +22,7 @@
 #include "fs.h"
 #include "buf.h"
 
-#define NBUCKET 13
+#define NBUCKET 7
 #define HASH(id) ((id) % NBUCKET)
 #define DEBUG 0
 
