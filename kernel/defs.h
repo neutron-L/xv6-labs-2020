@@ -8,6 +8,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct vm_area;
 
 // bio.c
 void            binit(void);
@@ -16,6 +17,11 @@ void            brelse(struct buf*);
 void            bwrite(struct buf*);
 void            bpin(struct buf*);
 void            bunpin(struct buf*);
+
+// vma.c
+struct vm_area *vma_get();
+void            vma_insert(struct vm_area *, struct vm_area *);
+void            vma_put();
 
 // console.c
 void            consoleinit(void);
