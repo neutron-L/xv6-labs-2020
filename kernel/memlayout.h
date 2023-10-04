@@ -65,3 +65,6 @@
 //   TRAPFRAME (p->trapframe, used by the trampoline)
 //   TRAMPOLINE (the same page as in the kernel)
 #define TRAPFRAME (TRAMPOLINE - PGSIZE)
+
+// file-mmapped start address
+#define FILE_MMAPPED (TRAPFRAME - 1024 * PGSIZE)
