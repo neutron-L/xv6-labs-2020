@@ -67,4 +67,5 @@
 #define TRAPFRAME (TRAMPOLINE - PGSIZE)
 
 // file-mmapped start address
+// reserved 1024 pages for file-mmapped
 #define FILE_MMAPPED (TRAPFRAME - 1024 * PGSIZE)
