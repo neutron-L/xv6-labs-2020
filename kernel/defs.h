@@ -22,7 +22,7 @@ void            bunpin(struct buf*);
 void            vma_cache_init();
 struct vm_area *vma_get();
 void            vma_insert(struct vm_area *, struct vm_area *);
-void            vma_put();
+void            vma_put(struct vm_area *);
 
 // console.c
 void            consoleinit(void);
@@ -112,6 +112,7 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
+void            unmap_pages(pagetable_t, uint64, uint64, struct vm_area*);
 int             vma_handler(uint64, uint64);
 
 // swtch.S
@@ -175,6 +176,7 @@ int             uvmcopy(pagetable_t, pagetable_t, uint64);
 void            uvmfree(pagetable_t, uint64);
 void            uvmunmap(pagetable_t, uint64, uint64, int);
 void            uvmclear(pagetable_t, uint64);
+pte_t *         walk(pagetable_t, uint64, int);
 uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);

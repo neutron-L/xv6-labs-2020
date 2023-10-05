@@ -523,14 +523,14 @@ sys_pipe(void)
 uint64
 sys_mmap(void)
 {
-    uint64 addr, length;
-    int prot, flags, offseet;
+    uint64 addr;
+    int length, prot, flags, offset;
     int fd;
     struct proc *p = myproc();
     struct file *f;
 
     // Step 1. handle arguments
-    if (argaddr(0, &addr) < 0 || argaddr(1, &length) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argint(4, &fd) < 0 || argint(5, &offseet))
+    if (argaddr(0, &addr) < 0 || argint(1, &length) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argint(4, &fd) < 0 || argint(5, &offset))
     {
         return -1;
     }
@@ -541,13 +541,16 @@ sys_mmap(void)
     // addr向下取整PGSIZE
     length = PGROUNDUP(length);
     addr = PGROUNDDOWN(addr);
-    
-    // check flags
-    if (!f->readable)
-        prot &= ~PROT_READ;
-    if (!f->writable)
-        prot &= ~PROT_WRITE;
 
+    // printf("prot: %d; readable: %d; writable: %d\n", prot, f->readable, f->writable);
+    // check flags
+    if (flags & MAP_SHARED)
+    {
+        if (!f->writable && (prot & PROT_WRITE))
+            return -1;
+    }
+
+    // printf("prot: %d\n", prot);
     // Step 2. Find a suitable location and decide the addr
     struct vm_area *pv = &p->mmap;
     uint64 sa = 0;
@@ -564,12 +567,13 @@ sys_mmap(void)
         }
         if (pv->addr + pv->length <= addr && addr + length <= next->addr)
             stop = 1;
+        pv = next;
     }
     if (!stop)
         addr = pv->addr + pv->length;
     else
         addr = sa;
-
+    // printf("map addr: %p\n", addr);
     // Step 3. allocate a free vma and insert to proc vma list
     struct vm_area *v = vma_get();
     v->addr = addr;
@@ -578,7 +582,7 @@ sys_mmap(void)
     v->flags = flags;
     filedup(f);
     v->fp = f;
-    v->offset = offseet;
+    v->offset = offset;
 
     vma_insert(pv, v);
 
@@ -588,5 +592,53 @@ sys_mmap(void)
 uint64
 sys_munmap(void)
 {
+    uint64 addr;
+    int length;
+    struct proc *p = myproc();
+
+    // Step 1. handle arguments
+    if (argaddr(0, &addr) < 0 || argint(1, &length) < 0)
+    {
+        return -1;
+    }
+    addr = PGROUNDDOWN(addr);
+    length = PGROUNDUP(length);
+    // printf("unmap addr: %p\n", addr);
+
+    // Step 2. Find a suitable location and decide the addr
+    struct vm_area *v = p->mmap.next;
+    while (v != &p->mmap)
+    {
+        if (v->addr <= addr && addr < v->addr + v->length)
+            break;
+        v = v->next;
+    }
+    if (v == &p->mmap)
+        return -1;
+
+    // Step 3. modify vma
+    // Assume will not unmap a hole
+    if (addr == v->addr)
+    {
+        v->addr += length;
+        v->offset += length;
+        v->length -= length;
+    }
+    else if (addr + length == v->addr + v->length)
+    {
+        v->length -= length;
+    }
+    else
+        panic("munmap: invalid addr\n");
+
+    if (v->length == 0)
+    {
+        fileclose(v->fp);
+        vma_put(v);
+    }
+
+    // Step 4. unmap pages
+    unmap_pages(p->pagetable, addr, length >> PGSHIFT, v);
+
     return 0;
 }

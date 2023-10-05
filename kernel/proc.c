@@ -377,6 +377,19 @@ void exit(int status)
         }
     }
 
+    // Unmap all vma.
+    struct vm_area *v = p->mmap.next;
+    struct vm_area *next;
+
+    while (v != &p->mmap)
+    {
+        next = v->next;
+        unmap_pages(p->pagetable, v->addr, v->length >> PGSHIFT, v);
+        fileclose(v->fp);
+        vma_put(v);
+        v = next;
+    }
+
     begin_op();
     iput(p->cwd);
     end_op();
@@ -741,6 +754,54 @@ void procdump(void)
     }
 }
 
+void unmap_pages(pagetable_t pagetable, uint64 va, uint64 npages, struct vm_area *v)
+{
+    uint64 a;
+    pte_t *pte;
+
+    if ((va % PGSIZE) != 0)
+        panic("unmap_pages: not aligned");
+
+    for (a = va; a < va + npages * PGSIZE; a += PGSIZE)
+    {
+        if ((pte = walk(pagetable, a, 0)) == 0)
+            continue;
+        if ((*pte & PTE_V) == 0)
+            continue;;
+        if (PTE_FLAGS(*pte) == PTE_V)
+            panic("unmap_pages: not a leaf");
+
+        uint64 pa = PTE2PA(*pte);
+        // write back
+        if ((PTE_FLAGS(*pte) & PTE_D) && (v->flags & MAP_SHARED))
+        {
+            // printf("dirty page\n");
+            int max = ((MAXOPBLOCKS - 1 - 1 - 2) / 2) * BSIZE;
+            int tot = 0;
+            int off = v->offset + (a - v->addr);
+            int r, n;
+            int all = PGSIZE;
+            if (all > v->fp->ip->size - off)
+                all = v->fp->ip->size - off;
+            while (tot < all && off + tot < v->fp->ip->size)
+            {
+                n = max;
+                if (n > all - tot)
+                    n = all - tot;
+                begin_op();
+                ilock(v->fp->ip);
+                if ((r = writei(v->fp->ip, 0, pa + tot, off + tot, n)) > 0)
+                    tot += r;
+                iunlock(v->fp->ip);
+                end_op();
+            }
+        }
+
+        kfree((void *)pa);
+        *pte = 0;
+    }
+}
+
 int vma_handler(uint64 cause, uint64 addr)
 {
     struct proc *p = myproc();
@@ -752,6 +813,7 @@ int vma_handler(uint64 cause, uint64 addr)
     {
         if (addr >= v->addr && addr < v->addr + v->length)
             break;
+        v = v->next;
     }
     // not found vma
     if (v == &p->mmap)
@@ -805,6 +867,6 @@ int vma_handler(uint64 cause, uint64 addr)
     // memset rem bytes 0
     if (origin_tot < PGSIZE)
         memset(pa + origin_tot, 0, PGSIZE - origin_tot);
-    
+
     return 0;
 }
