@@ -302,6 +302,20 @@ int fork(void)
         release(&np->lock);
         return -1;
     }
+
+    // Copy vma list
+    struct vm_area * v = p->mmap.next;
+    struct vm_area * nv;
+    while (v != &p->mmap)
+    {
+        nv = vma_get();
+        
+        *nv = *v;
+        filedup(v->fp);
+        vma_insert(&np->mmap, nv);
+        v = v->next;
+    }
+
     np->sz = p->sz;
 
     np->parent = p;
