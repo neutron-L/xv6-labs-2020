@@ -2,6 +2,7 @@
 #include "param.h"
 #include "memlayout.h"
 #include "riscv.h"
+#include "vma.h"
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
@@ -127,6 +128,13 @@ found:
     release(&p->lock);
     return 0;
   }
+
+  // init vma area, the header 
+  // For convenience, a mapping area of size 0 is named in the header, 
+  // with the starting address being vma start address
+  memset(&p->mmap, 0, sizeof(struct vm_area));
+  p->mmap.addr = FILE_MMAPPED;
+  p->mmap.prev = p->mmap.next = &p->mmap;
 
   // Set up new context to start executing at forkret,
   // which returns to user space.

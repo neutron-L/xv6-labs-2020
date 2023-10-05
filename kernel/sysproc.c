@@ -5,6 +5,7 @@
 #include "param.h"
 #include "memlayout.h"
 #include "spinlock.h"
+#include "vma.h"
 #include "proc.h"
 
 uint64

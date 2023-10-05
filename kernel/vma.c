@@ -65,6 +65,7 @@ vma_get()
         panic("vma_get: no free vmas");
 }
 
+// Move v from origin list to head`s next
 void 
 vma_insert(struct vm_area *head, struct vm_area *v)
 {
