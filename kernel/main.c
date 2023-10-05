@@ -25,6 +25,7 @@ main()
     plicinit();      // set up interrupt controller
     plicinithart();  // ask PLIC for device interrupts
     binit();         // buffer cache
+    vma_cache_init();// vma cache
     iinit();         // inode cache
     fileinit();      // file table
     virtio_disk_init(); // emulated hard disk
