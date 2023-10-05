@@ -541,12 +541,12 @@ sys_mmap(void)
     // addr向下取整PGSIZE
     length = PGROUNDUP(length);
     addr = PGROUNDDOWN(addr);
-
+    
     // check flags
     if (!f->readable)
-        flags &= ~PROT_READ;
+        prot &= ~PROT_READ;
     if (!f->writable)
-        flags &= ~PROT_WRITE;
+        prot &= ~PROT_WRITE;
 
     // Step 2. Find a suitable location and decide the addr
     struct vm_area *pv = &p->mmap;
@@ -582,7 +582,7 @@ sys_mmap(void)
 
     vma_insert(pv, v);
 
-    return 0;
+    return v->addr;
 }
 
 uint64
