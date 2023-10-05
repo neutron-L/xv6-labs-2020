@@ -23,8 +23,18 @@ struct
     struct vm_area head;
 } vma_cache;
 
-void 
-vma_cache_init(void)
+// inset v to head`s next
+void vma_insert(struct vm_area *head, struct vm_area *v)
+{
+    // v->next->prev = v->prev;
+    // v->prev->next = v->next;
+    v->next = head->next;
+    v->prev = head;
+    head->next->prev = v;
+    head->next = v;
+}
+
+void vma_cache_init(void)
 {
     struct vm_area *v;
 
@@ -35,10 +45,11 @@ vma_cache_init(void)
     vma_cache.head.next = &vma_cache.head;
     for (v = vma_cache.vmas; v < vma_cache.vmas + NVMA; v++)
     {
-        v->next = vma_cache.head.next;
-        v->prev = &vma_cache.head;
-        vma_cache.head.next->prev = v;
-        vma_cache.head.next = v;
+        // v->next = vma_cache.head.next;
+        // v->prev = &vma_cache.head;
+        // vma_cache.head.next->prev = v;
+        // vma_cache.head.next = v;
+        vma_insert(&vma_cache.head, v);
     }
 }
 
@@ -61,21 +72,8 @@ vma_get()
         release(&vma_cache.lock);
         return v;
     }
-
     else
         panic("vma_get: no free vmas");
-}
-
-// Move v from origin list to head`s next
-void 
-vma_insert(struct vm_area *head, struct vm_area *v)
-{
-    v->next->prev = v->prev;
-    v->prev->next = v->next;
-    v->next = head->next;
-    v->prev = head;
-    head->next->prev = v;
-    head->next = v;
 }
 
 // Release a locked buffer.
@@ -84,8 +82,12 @@ void vma_put(struct vm_area *v)
 {
     acquire(&vma_cache.lock);
 
-    // v->next->prev = v->prev;
-    // v->prev->next = v->next;
+    if (v->next && v->prev)
+    {
+        v->next->prev = v->prev;
+        v->prev->next = v->next;
+    }
+
     // v->next = vma_cache.head.next;
     // v->prev = &vma_cache.head;
     // vma_cache.head.next->prev = v;
