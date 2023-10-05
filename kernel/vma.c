@@ -23,7 +23,8 @@ struct
     struct vm_area head;
 } vma_cache;
 
-void vma_cache_init(void)
+void 
+vma_cache_init(void)
 {
     struct vm_area *v;
 

@@ -19,6 +19,7 @@ void            bpin(struct buf*);
 void            bunpin(struct buf*);
 
 // vma.c
+void            vma_cache_init();
 struct vm_area *vma_get();
 void            vma_insert(struct vm_area *, struct vm_area *);
 void            vma_put();
@@ -111,6 +112,7 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
+int             vma_handler(uint64, uint64);
 
 // swtch.S
 void            swtch(struct context*, struct context*);
